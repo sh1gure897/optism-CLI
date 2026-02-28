@@ -1,7 +1,7 @@
 # ⚡ Optism-CLI
 
 <p align="center">
-  <img src="assets/banner.png" alt="Optism-CLI Banner" width="100%">
+  <img src="assets/i18n/banner.png" alt="Optism-CLI Banner" width="100%">
 </p>
 
 ![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)
