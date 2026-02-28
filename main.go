@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +16,13 @@ import (
 	"github.com/sh1gure897/optism-cli/pkg/scanner"
 )
 
+const (
+	ColorCyan   = "\033[36m"
+	ColorYellow = "\033[33m"
+	ColorReset  = "\033[0m"
+	ColorBold   = "\033[1m"
+)
+
 func main() {
 	var targetInstance string
 	var customModDir string
@@ -24,27 +30,36 @@ func main() {
 	flag.StringVar(&customModDir, "mod-dir", "", "Custom mod directory path")
 	flag.Parse()
 
+	printBanner()
+
 	cfg, _ := config.Load()
 	if cfg == nil {
 		cfg = &config.AppConfig{}
 	}
-
 	if cfg.Language == "" {
 		cfg.Language = promptLanguage()
 		config.Save(cfg)
 	}
 
 	info, _ := scanner.ScanHardware()
-	plan := optimizer.GeneratePlan(info)
 	prismDir, _ := scanner.LocatePrismInstances()
 
-	for {
-		lang, err := profiles.LoadLanguage(cfg.Language)
-		if err != nil {
-			log.Fatalf("i18n Load Error: %v", err)
-		}
+	// プリセット選択
+	fmt.Printf("\n%s [1] Competitive (CPvP) [2] Balanced [3] Quality: ", ColorBold+"Select Preset:"+ColorReset)
+	var pInput string
+	fmt.Scanln(&pInput)
+	preset := optimizer.Competitive
+	switch pInput {
+	case "2":
+		preset = optimizer.Balanced
+	case "3":
+		preset = optimizer.Quality
+	}
+	plan := optimizer.GeneratePlan(info, preset)
 
-		fmt.Printf("\n%s\n", lang.ScanStart)
+	for {
+		lang, _ := profiles.LoadLanguage(cfg.Language)
+		fmt.Printf("\n%s\n", ColorCyan+lang.ScanStart+ColorReset)
 		fmt.Println("---------------------------------------")
 		fmt.Printf(lang.CPUInfo+"\n", info.CPUName, info.CPUCores)
 		fmt.Printf(lang.PlanInfo+"\n", plan.JavaXmx, plan.RenderDistance, plan.GraphicsMode)
@@ -55,33 +70,44 @@ func main() {
 		fmt.Println("---------------------------------------")
 
 		if targetInstance != "" || customModDir != "" {
-			runDirect(targetInstance, customModDir, prismDir, plan, lang)
+			runProcess(targetInstance, customModDir, prismDir, plan, lang)
 			break
 		}
 
-		choice, selectedInstance := interactiveMenu(prismDir, lang)
-
+		choice, selected := interactiveMenu(prismDir, lang)
+		if choice == "QUIT" {
+			break
+		}
 		if choice == "LANG" {
 			cfg.Language = promptLanguage()
 			config.Save(cfg)
 			continue
-		} else if choice == "CREATE" {
-			targetInstance = createFlow(prismDir, lang)
-			if targetInstance != "" {
-				runDirect(targetInstance, "", prismDir, plan, lang)
-			}
-			break
-		} else if choice == "OPTIMIZE" {
-			runDirect(selectedInstance, "", prismDir, plan, lang)
-			break
-		} else {
-			break
+		}
+
+		if choice == "CREATE" {
+			selected = createFlow(prismDir, lang)
+		}
+
+		if selected != "" {
+			runProcess(selected, "", prismDir, plan, lang)
+			break // 処理完了後に終了
 		}
 	}
 
 	lang, _ := profiles.LoadLanguage(cfg.Language)
-	fmt.Println("---------------------------------------")
-	fmt.Println(lang.Finish)
+	fmt.Println("\n" + lang.Finish)
+}
+
+func printBanner() {
+	banner := `
+  ____  _____ _______ _____  _____ __  __ 
+ / __ \|  __ \__   __|_   _|/ ____|  \/  |
+| |  | | |__) | | |    | | | (___ | \  / |
+| |  | |  ___/  | |    | |  \___ \| |\/| |
+| |__| | |      | |   _| |_ ____) | |  | |
+ \____/|_|      |_|  |_____|_____/|_|  |_|
+`
+	fmt.Println(ColorCyan + banner + ColorReset)
 }
 
 func promptLanguage() string {
@@ -94,28 +120,24 @@ func promptLanguage() string {
 	return "en"
 }
 
-func runDirect(target, customDir, prismDir string, plan *optimizer.OptimizationPlan, lang *profiles.LanguageBundle) {
+func runProcess(target, customDir, prismDir string, plan *optimizer.OptimizationPlan, lang *profiles.LanguageBundle) {
 	if customDir != "" {
-		// Custom Dir モード
-		installer.InstallPerformanceMods(customDir) // 本来はここも翻訳を渡すべきですが、一旦パス表示で対応
+		installer.InstallPerformanceMods(customDir)
 		return
 	}
-
-	fmt.Printf("\n"+lang.TargetLock+"\n", target)
 	targetPath := filepath.Join(prismDir, target)
 	mcPath := filepath.Join(targetPath, ".minecraft")
 	if _, err := os.Stat(mcPath); os.IsNotExist(err) {
 		mcPath = targetPath
 	}
 
-	fmt.Println(lang.InjectStart)
+	fmt.Printf("\n"+lang.TargetLock+"\n", target)
 	optimizer.InjectConfig(mcPath, plan)
 
 	fmt.Print(lang.ModPrompt)
 	var ans string
 	fmt.Scanln(&ans)
 	if strings.ToLower(ans) == "y" {
-		// ※installerパッケージへlangを渡せるようにすると完璧です
 		installer.InstallPerformanceMods(filepath.Join(mcPath, "mods"))
 	}
 }
@@ -131,25 +153,23 @@ func interactiveMenu(prismDir string, lang *profiles.LanguageBundle) (string, st
 
 	fmt.Printf("\n%s\n", lang.MenuTitle)
 	for i, name := range instances {
-		fmt.Printf("  [%d] "+lang.MenuOptimize+"\n", i+1, name)
+		fmt.Printf("  "+ColorYellow+"[%d]"+ColorReset+" "+lang.MenuOptimize+"\n", i+1, name)
 	}
-	fmt.Printf("  [N] %s\n", lang.MenuCreate)
-	fmt.Printf("  [L] %s\n", lang.MenuLang)
-	fmt.Printf("  [Q] %s\n", lang.MenuQuit)
+	fmt.Printf("  [N] %s\n  [L] %s\n  [Q] %s\n", lang.MenuCreate, lang.MenuLang, lang.MenuQuit)
 	fmt.Print("\n" + lang.MenuChoice)
 
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.ToUpper(strings.TrimSpace(input))
+	var input string
+	fmt.Scanln(&input)
+	input = strings.ToUpper(input)
 
+	if input == "Q" {
+		return "QUIT", ""
+	}
 	if input == "L" {
 		return "LANG", ""
 	}
 	if input == "N" {
 		return "CREATE", ""
-	}
-	if input == "Q" {
-		return "QUIT", ""
 	}
 
 	idx, err := strconv.Atoi(input)

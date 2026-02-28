@@ -7,7 +7,6 @@ import (
 	"runtime"
 )
 
-// LocateMinecraft finds the default .minecraft directory based on OS.
 func LocateMinecraft() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -32,7 +31,6 @@ func LocateMinecraft() (string, error) {
 	return path, nil
 }
 
-// LocatePrismInstances detects the Prism Launcher instance storage.
 func LocatePrismInstances() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -40,19 +38,17 @@ func LocatePrismInstances() (string, error) {
 	}
 
 	var path string
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		path = filepath.Join(os.Getenv("APPDATA"), "PrismLauncher", "instances")
-	} else if runtime.GOOS == "darwin" {
+	case "darwin":
 		path = filepath.Join(home, "Library", "Application Support", "PrismLauncher", "instances")
+	default:
+		return "", fmt.Errorf("unsupported platform")
 	}
 
-	if path == "" || isDirMissing(path) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return "", fmt.Errorf("prism directory missing")
 	}
 	return path, nil
-}
-
-func isDirMissing(path string) bool {
-	info, err := os.Stat(path)
-	return os.IsNotExist(err) || !info.IsDir()
 }

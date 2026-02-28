@@ -1,0 +1,15 @@
+# Binaries
+*.exe
+optism-cli
+
+# Local Configs (Private data)
+settings.json
+internal/auth/secrets.go
+
+# Dependencies
+vendor/
+go.sum
+
+# OS files
+.DS_Store
+Thumbs.db
